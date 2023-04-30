@@ -1,3 +1,3 @@
 pub(crate) use super::renderer::Renderer;
 
-pub mod primitive;
+pub mod naive;

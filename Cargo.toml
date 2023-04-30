@@ -12,7 +12,7 @@ winit = "0.28.3"
 image = "0.24"
 log = "0.4.17"
 env_logger = "0.10.0"
-nalgebra-glm = { name = "glm", version = "0.18.0", features = ["default", "convert-bytemuck", "cuda"] }
+nalgebra-glm = { version = "0.18.0", features = ["default", "convert-bytemuck", "cuda"] }
 
 [profile.dev]
 opt-level = 1 
