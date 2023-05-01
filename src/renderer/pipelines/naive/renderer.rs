@@ -4,15 +4,24 @@ use std::sync::Arc;
 
 use log::error;
 use vulkano::{
-    command_buffer::{AutoCommandBufferBuilder, ClearColorImageInfo, CommandBufferUsage},
+    command_buffer::{
+        AutoCommandBufferBuilder, BlitImageInfo, ClearColorImageInfo, CommandBufferUsage,
+    },
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, PersistentDescriptorSet,
+        WriteDescriptorSet,
+    },
     device::Queue,
     format::ClearColorValue,
-    image::{ImageUsage, SwapchainImage},
+    image::{view::ImageView, ImageDimensions, ImageUsage, StorageImage, SwapchainImage},
+    pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
     sync::{self, GpuFuture},
 };
 
-use crate::{Renderer, RenderingContext};
+use crate::RenderingContext;
+
+use super::shader;
 
 pub struct NaiveCamera {
     pub position: glm::Vec3,
@@ -37,6 +46,9 @@ pub struct NaiveRenderer {
 
     // Dataflow
     pub(crate) queue: Arc<Queue>,
+    pub(crate) out_image: Arc<StorageImage>,
+    pub(crate) pipeline: Arc<ComputePipeline>,
+    pub(crate) descriptors: Arc<PersistentDescriptorSet>,
 
     // Presentation
     pub(crate) swapchain: Arc<Swapchain>,
@@ -50,6 +62,7 @@ impl NaiveRenderer {
             .surface_capabilities(&surface, Default::default())
             .expect("failed to get surface capabilities");
 
+        // Dimensions of the surface to draw on
         let dimensions = [800, 600];
 
         let composite_alpha = caps.supported_composite_alpha.into_iter().next().unwrap();
@@ -76,10 +89,53 @@ impl NaiveRenderer {
 
         let queue = ctx.queues.iter().next().unwrap().clone();
 
+        // The buffer to draw onto
+        let out_image = StorageImage::new(
+            &ctx.memory_allocator,
+            ImageDimensions::Dim2d {
+                width: dimensions[0],
+                height: dimensions[1],
+                array_layers: 1, // images can be arrays of layers
+            },
+            vulkano::format::Format::R8G8B8A8_UNORM,
+            Some(queue.queue_family_index()),
+        )
+        .unwrap();
+
+        let compute_pipeline = ComputePipeline::new(
+            ctx.device.clone(),
+            shader(ctx.device.clone()).entry_point("main").unwrap(),
+            &(),
+            None,
+            |_| {},
+        )
+        .expect("failed to create compute pipeline");
+
+        let descriptor_set_allocator = StandardDescriptorSetAllocator::new(ctx.device.clone());
+        let pipeline_layout = compute_pipeline.layout();
+        let descriptor_set_layouts = pipeline_layout.set_layouts();
+
+        let descriptor_set_layout_index = 0;
+        let descriptor_set_layout = descriptor_set_layouts
+            .get(descriptor_set_layout_index)
+            .unwrap();
+
+        let view = ImageView::new_default(out_image.clone()).unwrap();
+
+        let descriptor_set = PersistentDescriptorSet::new(
+            &descriptor_set_allocator,
+            descriptor_set_layout.clone(),
+            [WriteDescriptorSet::image_view(0, view)], // 0 is the binding
+        )
+        .unwrap();
+
         Self {
             ctx,
             swapchain,
             swapchain_images: images,
+            out_image,
+            pipeline: compute_pipeline,
+            descriptors: descriptor_set,
             queue,
         }
     }
@@ -97,20 +153,21 @@ impl NaiveRenderer {
         let image = self.swapchain_images.get(image_i as usize).unwrap();
 
         builder
-            .clear_color_image(ClearColorImageInfo {
-                clear_value: ClearColorValue::Float([
-                    225f32 / 255f32,
-                    0f32 / 255f32,
-                    152f32 / 255f32,
-                    1.0,
-                ]),
-                ..ClearColorImageInfo::image(image.clone())
-            })
+            .bind_pipeline_compute(self.pipeline.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Compute,
+                self.pipeline.layout().clone(),
+                0u32,
+                self.descriptors.clone(),
+            )
+            .dispatch([800, 600, 1])
+            .unwrap()
+            .blit_image(BlitImageInfo::images(self.out_image.clone(), image.clone()))
             .unwrap();
 
         let command_buffer = builder.build().unwrap();
 
-        let execution = sync::now(self.ctx.device.clone())
+        sync::now(self.ctx.device.clone())
             .join(acquire_future)
             .then_execute(self.queue.clone(), command_buffer)
             .unwrap()
@@ -118,21 +175,9 @@ impl NaiveRenderer {
                 self.queue.clone(),
                 SwapchainPresentInfo::swapchain_image_index(self.swapchain.clone(), image_i),
             )
-            .then_signal_fence_and_flush();
-
-        match execution {
-            Ok(future) => {
-                future.wait(None).unwrap(); // wait for the GPU to finish
-            }
-            Err(e) => {
-                error!("Failed to flush future: {e}");
-            }
-        }
-    }
-}
-
-impl Renderer for NaiveRenderer {
-    fn context(&self) -> Arc<RenderingContext> {
-        self.ctx.to_owned()
+            .then_signal_fence_and_flush()
+            .unwrap()
+            .wait(None)
+            .unwrap();
     }
 }

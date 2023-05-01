@@ -46,6 +46,26 @@ impl RenderingContext {
             .next()
             .expect("no devices available");
 
+        info!(
+            "{} (driver v. {}) features: {}",
+            physical_device.properties().device_name,
+            physical_device
+                .properties()
+                .driver_info
+                .to_owned()
+                .unwrap_or("undefined".into()),
+            physical_device.supported_features().into_iter().fold(
+                String::new(),
+                |mut acc, (feature, enabled)| {
+                    if enabled {
+                        acc.push_str(feature);
+                        acc.push_str(", ");
+                    }
+                    acc
+                }
+            )
+        );
+
         for family in physical_device.queue_family_properties() {
             info!(
                 "Found a queue ({:?}) family with {:?} queue(s)",

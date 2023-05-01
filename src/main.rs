@@ -1,7 +1,7 @@
 mod renderer;
 use std::error::Error;
 
-use pipelines::naive::NaiveRenderer;
+use pipelines::naive::*;
 
 pub use renderer::prelude::*;
 
@@ -43,8 +43,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .build_vk_surface(&event_loop, ctx.instance.clone())?;
 
     let renderer = NaiveRenderer::new(ctx, window);
-    
-    renderer.draw();
+
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
             event: WindowEvent::CloseRequested,
@@ -56,7 +55,9 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             event: WindowEvent::Resized(_),
             ..
         } => {}
-        Event::MainEventsCleared => {}
+        Event::MainEventsCleared => {
+            renderer.draw();
+        }
         _ => (),
     });
 }
