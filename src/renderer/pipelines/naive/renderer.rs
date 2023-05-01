@@ -2,19 +2,17 @@ extern crate nalgebra_glm as glm;
 
 use std::sync::Arc;
 
-use log::error;
 use vulkano::{
-    command_buffer::{
-        AutoCommandBufferBuilder, BlitImageInfo, ClearColorImageInfo, CommandBufferUsage,
-    },
+    buffer::BufferContents,
+    command_buffer::{AutoCommandBufferBuilder, BlitImageInfo, CommandBufferUsage},
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, DescriptorSet, PersistentDescriptorSet,
-        WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
-    format::ClearColorValue,
-    image::{view::ImageView, ImageDimensions, ImageUsage, StorageImage, SwapchainImage},
-    pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    image::{
+        view::ImageView, ImageAccess, ImageDimensions, ImageUsage, StorageImage, SwapchainImage,
+    },
+    pipeline::{layout::PushConstantRange, ComputePipeline, Pipeline, PipelineBindPoint},
     swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
     sync::{self, GpuFuture},
 };
@@ -53,6 +51,14 @@ pub struct NaiveRenderer {
     // Presentation
     pub(crate) swapchain: Arc<Swapchain>,
     pub(crate) swapchain_images: Vec<Arc<SwapchainImage>>,
+}
+
+#[derive(BufferContents)]
+#[repr(C)]
+pub struct RendererConstants {
+    pub(crate) aspect_ratio: f32,
+    pub(crate) width: f32,
+    pub(crate) height: f32,
 }
 
 impl NaiveRenderer {
@@ -152,6 +158,14 @@ impl NaiveRenderer {
             swapchain::acquire_next_image(self.swapchain.clone(), None).unwrap();
         let image = self.swapchain_images.get(image_i as usize).unwrap();
 
+        let camera = NaiveCamera::default();
+
+        let consts = RendererConstants {
+            aspect_ratio: image.dimensions().width() as f32 / image.dimensions().height() as f32,
+            width: image.dimensions().width() as f32,
+            height: image.dimensions().height() as f32,
+        };
+
         builder
             .bind_pipeline_compute(self.pipeline.clone())
             .bind_descriptor_sets(
@@ -160,6 +174,7 @@ impl NaiveRenderer {
                 0u32,
                 self.descriptors.clone(),
             )
+            .push_constants(self.pipeline.layout().clone(), 0, consts)
             .dispatch([800, 600, 1])
             .unwrap()
             .blit_image(BlitImageInfo::images(self.out_image.clone(), image.clone()))
