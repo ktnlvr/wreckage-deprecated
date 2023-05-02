@@ -2,24 +2,40 @@ extern crate nalgebra_glm as glm;
 
 use std::sync::Arc;
 
+use glm::vec3;
+use log::debug;
 use vulkano::{
-    buffer::BufferContents,
+    buffer::{
+        view::{BufferView, BufferViewCreateInfo},
+        Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer,
+    },
     command_buffer::{AutoCommandBufferBuilder, BlitImageInfo, CommandBufferUsage},
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator,
+        layout::{
+            DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
+            DescriptorType,
+        },
+        DescriptorSet, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
+    format::Format,
     image::{
         view::ImageView, ImageAccess, ImageDimensions, ImageUsage, StorageImage, SwapchainImage,
     },
-    pipeline::{layout::PushConstantRange, ComputePipeline, Pipeline, PipelineBindPoint},
+    memory::allocator::{AllocationCreateInfo, MemoryUsage},
+    pipeline::{
+        layout::{PipelineLayoutCreateInfo, PushConstantRange},
+        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+    },
+    shader::{DescriptorBindingRequirements, ShaderStages},
     swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
     sync::{self, GpuFuture},
 };
 
 use crate::RenderingContext;
 
-use super::shader;
+use super::{shader, RawSphere, Sphere};
 
 pub struct NaiveCamera {
     pub position: glm::Vec3,
@@ -59,6 +75,8 @@ pub struct RendererConstants {
     pub(crate) aspect_ratio: f32,
     pub(crate) width: f32,
     pub(crate) height: f32,
+    pub(crate) min_depth: f32,
+    pub(crate) max_depth: f32,
 }
 
 impl NaiveRenderer {
@@ -108,30 +126,83 @@ impl NaiveRenderer {
         )
         .unwrap();
 
-        let compute_pipeline = ComputePipeline::new(
+        // The buffer to store spheres in
+        let sphere_buffer = Buffer::from_iter(
+            &ctx.memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::UNIFORM_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
+                ..Default::default()
+            },
+            [
+                Sphere::new(vec3(3.0, 1.0, -4.0), 0.2),
+                Sphere::new(vec3(0.0, 0.0, -1.0), 0.5),
+            ]
+            .map(Sphere::raw),
+        )
+        .unwrap();
+
+        let descriptor_set_allocator = StandardDescriptorSetAllocator::new(ctx.device.clone());
+        let descriptor_set_layout = DescriptorSetLayout::new(
+            ctx.device.clone(),
+            DescriptorSetLayoutCreateInfo {
+                bindings: [
+                    (
+                        0,
+                        DescriptorSetLayoutBinding {
+                            stages: ShaderStages::COMPUTE,
+                            ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::StorageImage)
+                        }
+                    ),
+                    (
+                        1,
+                        DescriptorSetLayoutBinding {
+                            stages: ShaderStages::COMPUTE,
+                            ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::UniformBuffer)
+                        }
+                    ),
+                ]
+                .into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let pipeline_layout = PipelineLayout::new(
+            ctx.device.clone(),
+            PipelineLayoutCreateInfo {
+                set_layouts: vec![descriptor_set_layout.clone()],
+                push_constant_ranges: vec![PushConstantRange {
+                    stages: ShaderStages::COMPUTE,
+                    size: std::mem::size_of::<RendererConstants>() as u32,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let compute_pipeline = ComputePipeline::with_pipeline_layout(
             ctx.device.clone(),
             shader(ctx.device.clone()).entry_point("main").unwrap(),
             &(),
+            pipeline_layout,
             None,
-            |_| {},
         )
         .expect("failed to create compute pipeline");
-
-        let descriptor_set_allocator = StandardDescriptorSetAllocator::new(ctx.device.clone());
-        let pipeline_layout = compute_pipeline.layout();
-        let descriptor_set_layouts = pipeline_layout.set_layouts();
-
-        let descriptor_set_layout_index = 0;
-        let descriptor_set_layout = descriptor_set_layouts
-            .get(descriptor_set_layout_index)
-            .unwrap();
 
         let view = ImageView::new_default(out_image.clone()).unwrap();
 
         let descriptor_set = PersistentDescriptorSet::new(
             &descriptor_set_allocator,
             descriptor_set_layout.clone(),
-            [WriteDescriptorSet::image_view(0, view)], // 0 is the binding
+            [
+                WriteDescriptorSet::image_view(0, view),
+                WriteDescriptorSet::buffer(1, sphere_buffer),
+            ],
         )
         .unwrap();
 
@@ -164,6 +235,8 @@ impl NaiveRenderer {
             aspect_ratio: image.dimensions().width() as f32 / image.dimensions().height() as f32,
             width: image.dimensions().width() as f32,
             height: image.dimensions().height() as f32,
+            min_depth: 0f32,
+            max_depth: 40f32,
         };
 
         builder
@@ -175,7 +248,7 @@ impl NaiveRenderer {
                 self.descriptors.clone(),
             )
             .push_constants(self.pipeline.layout().clone(), 0, consts)
-            .dispatch([800, 600, 1])
+            .dispatch([800, 600, 2])
             .unwrap()
             .blit_image(BlitImageInfo::images(self.out_image.clone(), image.clone()))
             .unwrap();

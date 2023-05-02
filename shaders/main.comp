@@ -1,0 +1,128 @@
+#version 460
+
+layout(local_size_x = 64, local_size_y = 8, local_size_z = 1) in;
+layout(push_constant) uniform constants {
+    float aspect_ratio;
+    float width;
+    float height;
+    float min_depth;
+    float max_depth;
+} push_constants;
+
+struct Sphere {
+    vec3 position;
+    float radius;
+};
+
+layout(binding = 0, rgba8) uniform writeonly image2D img;
+layout(binding = 1) uniform Data {
+    Sphere spheres[2];
+} spheres;
+
+struct Ray {
+    vec3 origin;
+    vec3 direction;
+};
+
+struct HitData {
+    vec3 point;
+    vec3 colour;
+    vec3 normal;
+
+    bool front_face;
+    float distance;
+    bool hit;
+};
+
+HitData trace_sphere(Ray ray, vec3 center, float radius) {
+    HitData ret;
+
+    vec3 oc = ray.origin - center;
+    float a = 
+            ray.direction.x * ray.direction.x 
+            + ray.direction.y * ray.direction.y 
+            + ray.direction.z * ray.direction.z;
+
+    float half_b = dot(oc, ray.direction);
+    float c = (oc.x * oc.x + oc.y * oc.y + oc.z * oc.z) - radius * radius;
+    float discriminant = half_b * half_b - c * a;
+
+    if (discriminant < 0) {
+        ret.hit = false;
+        return ret;
+    } 
+
+    float sqrtd = sqrt(discriminant);
+
+    float root = (-half_b - sqrtd) / a;
+    if (root < push_constants.min_depth || push_constants.max_depth < root) {
+        root = (-half_b + sqrtd) / a;
+        if (root < push_constants.min_depth || push_constants.max_depth < root) {
+            ret.hit = false;
+            return ret;
+        }
+    }
+
+    ret.hit = true;
+    ret.distance = (-half_b - sqrtd) / a;
+    ret.normal = normalize(oc + ret.distance * ray.direction);
+    ret.colour = 0.5 * vec3(ret.normal.x + 1, ret.normal.y + 1, ret.normal.z + 1);
+    ret.point = ray.origin + ray.direction * ret.distance;
+
+    if (dot(ray.direction, ret.normal) > 0.0) {
+        ret.front_face = true;
+    } else {
+        ret.normal = -ret.normal;
+        ret.front_face = false;
+    }
+    
+    return ret;
+}
+
+HitData handle_miss(Ray ray) {
+    vec3 dir = normalize(ray.direction);
+    float t = 0.5*(dir.y + 1.0);
+    vec3 colour = (1.0-t)*vec3(1.0, 1.0, 1.0) + t*vec3(0.5, 0.7, 1.0);
+
+    HitData ret;
+    ret.hit = false;
+    ret.point = vec3(0,0,0);
+    ret.colour = colour;
+    return ret;
+}
+
+HitData raycast(Ray ray, vec2 uv) {
+    uint i = gl_GlobalInvocationID.z;
+    HitData data = trace_sphere(ray, spheres.spheres[i].position, spheres.spheres[i].radius);
+    if (!data.hit) {
+        return handle_miss(ray);
+    } else {
+        return data;
+    }
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+
+    vec3 origin = vec3(0, 0, 0);
+    float aspect_ratio = push_constants.aspect_ratio;
+
+    float viewport_height = 2.0;
+    float viewport_width =  viewport_height / push_constants.aspect_ratio;
+
+    vec3 horizontal = vec3(viewport_height, 0, 0);
+    vec3 vertical = vec3(0, viewport_width, 0);
+    int focal_length = 1;
+    vec3 lower_left = origin - horizontal / 2 - vertical / 2 - vec3(0, 0, focal_length);
+
+    vec2 uv = vec2(1, 1) - vec2(
+        gl_GlobalInvocationID.x / (gl_NumWorkGroups.x + 0.0), 
+        gl_GlobalInvocationID.y / (gl_NumWorkGroups.y + 0.0));
+
+    Ray ray;
+    ray.origin = origin;
+    ray.direction = lower_left + uv.x * horizontal + uv.y * vertical - origin;
+
+    HitData hit = raycast(ray, uv);
+    imageStore(img, pixel, vec4(hit.colour, 1));
+}
