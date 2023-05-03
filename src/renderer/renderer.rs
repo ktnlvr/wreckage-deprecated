@@ -39,39 +39,36 @@ impl RenderingContext {
             },
         )?;
 
-        let physical_device = vulkan_instance
+        let mut physical_devices = vulkan_instance
             .enumerate_physical_devices()
             .expect("could not enumerate devices")
             .filter(|p| p.supported_extensions().contains(&device_extensions))
-            .next()
-            .expect("no devices available");
+            .collect::<Vec<_>>();
 
+        physical_devices.sort_unstable_by_key(|device| match device.properties().device_type {
+            vulkano::device::physical::PhysicalDeviceType::DiscreteGpu => 0,
+            vulkano::device::physical::PhysicalDeviceType::IntegratedGpu => 1,
+            vulkano::device::physical::PhysicalDeviceType::VirtualGpu => 2,
+            vulkano::device::physical::PhysicalDeviceType::Cpu => 3,
+            vulkano::device::physical::PhysicalDeviceType::Other => 4,
+            _ => 5,
+        });
+
+        info!("Found {} devices:", physical_devices.len());
+        for device in &physical_devices {
+            info!("  {} ({:?})", device.properties().device_name, device.properties().device_type);
+        }
+
+        let physical_device = physical_devices[0].clone();
         info!(
-            "{} (driver v. {}) features: {}",
+            "Selected {} (driver v. {})",
             physical_device.properties().device_name,
             physical_device
                 .properties()
                 .driver_info
                 .to_owned()
-                .unwrap_or("undefined".into()),
-            physical_device.supported_features().into_iter().fold(
-                String::new(),
-                |mut acc, (feature, enabled)| {
-                    if enabled {
-                        acc.push_str(feature);
-                        acc.push_str(", ");
-                    }
-                    acc
-                }
-            )
+                .unwrap_or("`undefined`".into())
         );
-
-        for family in physical_device.queue_family_properties() {
-            info!(
-                "Found a queue ({:?}) family with {:?} queue(s)",
-                family.queue_flags, family.queue_count
-            );
-        }
 
         let queue_family_index = physical_device
             .queue_family_properties()
@@ -112,7 +109,7 @@ impl RenderingContext {
             instance: vulkan_instance,
             memory_allocator: allocator,
             command_buffer_allocator: command_allocator,
-            physical_device,
+            physical_device: physical_device.clone(),
             device,
             queues,
         }))
