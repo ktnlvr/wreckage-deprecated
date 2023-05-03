@@ -14,6 +14,7 @@ log = "0.4.17"
 env_logger = "0.10.0"
 nalgebra-glm = { version = "0.18.0", features = ["default", "convert-bytemuck", "cuda"] }
 vulkano-shaders = "0.33.0"
+git-version = "0.3.5"
 
 [profile.dev]
 opt-level = 1

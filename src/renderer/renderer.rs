@@ -1,9 +1,10 @@
 use std::{error::Error, sync::Arc};
 
-use log::info;
+use log::{info, debug};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags};
+use vulkano::instance::debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo};
 use vulkano::{
     device::Device,
     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
@@ -61,7 +62,7 @@ impl RenderingContext {
 
         let physical_device = physical_devices[0].clone();
         info!(
-            "Selected {} (driver v. {})",
+            "Selected {} (driver v{})",
             physical_device.properties().device_name,
             physical_device
                 .properties()
