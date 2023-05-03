@@ -5,7 +5,7 @@ use pipelines::naive::*;
 
 pub use renderer::prelude::*;
 
-use log::{info, debug};
+use log::{debug, info};
 use vulkano::{device::DeviceExtensions, VulkanLibrary};
 use vulkano_win::VkSurfaceBuild;
 use winit::{
@@ -21,7 +21,10 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     env_logger::builder()
         .filter_level(log::LevelFilter::Trace)
         .init();
-    debug!("Using commit {}", git_version::git_version!(fallback = "unknown"));
+    debug!(
+        "Using commit {}",
+        git_version::git_version!(fallback = "unknown")
+    );
     #[cfg(not(debug_assertions))]
     env_logger::init();
 

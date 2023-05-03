@@ -3,12 +3,8 @@ extern crate nalgebra_glm as glm;
 use std::sync::Arc;
 
 use glm::vec3;
-use log::debug;
 use vulkano::{
-    buffer::{
-        view::{BufferView, BufferViewCreateInfo},
-        Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer,
-    },
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{AutoCommandBufferBuilder, BlitImageInfo, CommandBufferUsage},
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator,
@@ -16,16 +12,15 @@ use vulkano::{
             DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
             DescriptorType,
         },
-        DescriptorSet, PersistentDescriptorSet, WriteDescriptorSet,
+        PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
-    format::Format,
     image::{
         view::ImageView, ImageAccess, ImageDimensions, ImageUsage, StorageImage, SwapchainImage,
     },
     memory::allocator::{AllocationCreateInfo, MemoryUsage},
     pipeline::{
-        layout::{PipelineLayoutCreateInfo, PushConstantRange},
+        layout::{PipelineLayoutCreateInfo},
         ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
     },
     shader::{DescriptorBindingRequirements, ShaderStages},
@@ -113,6 +108,14 @@ impl NaiveRenderer {
 
         let queue = ctx.queues.iter().next().unwrap().clone();
 
+        let consts = RendererConstants {
+            aspect_ratio: 800f32 / 600f32,
+            width: 800f32,
+            height: 600f32,
+            min_depth: 0f32,
+            max_depth: 40f32,
+        };
+
         // The buffer to draw onto
         let out_image = StorageImage::new(
             &ctx.memory_allocator,
@@ -145,6 +148,19 @@ impl NaiveRenderer {
         )
         .unwrap();
 
+        let render_constants = Buffer::from_data(
+            &ctx.memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::UNIFORM_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
+                ..Default::default()
+            },
+            consts,
+        ).unwrap();
+
         let descriptor_set_allocator = StandardDescriptorSetAllocator::new(ctx.device.clone());
         let descriptor_set_layout = DescriptorSetLayout::new(
             ctx.device.clone(),
@@ -154,15 +170,28 @@ impl NaiveRenderer {
                         0,
                         DescriptorSetLayoutBinding {
                             stages: ShaderStages::COMPUTE,
-                            ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::StorageImage)
-                        }
+                            ..DescriptorSetLayoutBinding::descriptor_type(
+                                DescriptorType::StorageImage,
+                            )
+                        },
                     ),
                     (
                         1,
                         DescriptorSetLayoutBinding {
                             stages: ShaderStages::COMPUTE,
-                            ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::UniformBuffer)
-                        }
+                            ..DescriptorSetLayoutBinding::descriptor_type(
+                                DescriptorType::UniformBuffer,
+                            )
+                        },
+                    ),
+                    (
+                        2,
+                        DescriptorSetLayoutBinding {
+                            stages: ShaderStages::COMPUTE,
+                            ..DescriptorSetLayoutBinding::descriptor_type(
+                                DescriptorType::UniformBuffer,
+                            )
+                        },
                     ),
                 ]
                 .into(),
@@ -175,11 +204,7 @@ impl NaiveRenderer {
             ctx.device.clone(),
             PipelineLayoutCreateInfo {
                 set_layouts: vec![descriptor_set_layout.clone()],
-                push_constant_ranges: vec![PushConstantRange {
-                    stages: ShaderStages::COMPUTE,
-                    size: std::mem::size_of::<RendererConstants>() as u32,
-                    ..Default::default()
-                }],
+                push_constant_ranges: vec![],
                 ..Default::default()
             },
         )
@@ -201,7 +226,8 @@ impl NaiveRenderer {
             descriptor_set_layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, view),
-                WriteDescriptorSet::buffer(1, sphere_buffer),
+                WriteDescriptorSet::buffer(1, render_constants),
+                WriteDescriptorSet::buffer(2, sphere_buffer),
             ],
         )
         .unwrap();
@@ -231,14 +257,6 @@ impl NaiveRenderer {
 
         let camera = NaiveCamera::default();
 
-        let consts = RendererConstants {
-            aspect_ratio: image.dimensions().width() as f32 / image.dimensions().height() as f32,
-            width: image.dimensions().width() as f32,
-            height: image.dimensions().height() as f32,
-            min_depth: 0f32,
-            max_depth: 40f32,
-        };
-
         builder
             .bind_pipeline_compute(self.pipeline.clone())
             .bind_descriptor_sets(
@@ -247,7 +265,6 @@ impl NaiveRenderer {
                 0u32,
                 self.descriptors.clone(),
             )
-            .push_constants(self.pipeline.layout().clone(), 0, consts)
             .dispatch([800, 600, 2])
             .unwrap()
             .blit_image(BlitImageInfo::images(self.out_image.clone(), image.clone()))

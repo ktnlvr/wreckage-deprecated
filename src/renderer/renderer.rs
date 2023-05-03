@@ -1,10 +1,9 @@
 use std::{error::Error, sync::Arc};
 
-use log::{info, debug};
+use log::info;
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags};
-use vulkano::instance::debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo};
 use vulkano::{
     device::Device,
     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
@@ -57,7 +56,11 @@ impl RenderingContext {
 
         info!("Found {} devices:", physical_devices.len());
         for device in &physical_devices {
-            info!("  {} ({:?})", device.properties().device_name, device.properties().device_type);
+            info!(
+                "  {} ({:?})",
+                device.properties().device_name,
+                device.properties().device_type
+            );
         }
 
         let physical_device = physical_devices[0].clone();

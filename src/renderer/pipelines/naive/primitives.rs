@@ -8,7 +8,7 @@ pub struct Sphere {
 }
 
 impl Sphere {
-    pub fn new(pos: glm::Vec3, radius: f32, ) -> Self {
+    pub fn new(pos: glm::Vec3, radius: f32) -> Self {
         Self { radius, pos }
     }
 
