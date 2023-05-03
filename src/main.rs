@@ -1,5 +1,5 @@
 mod renderer;
-use std::error::Error;
+use std::{error::Error, time};
 
 use pipelines::naive::*;
 
@@ -17,16 +17,14 @@ use winit::{
 use crate::renderer::prelude::renderer::RenderingContext;
 
 fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    #[cfg(debug_assertions)]
     env_logger::builder()
         .filter_level(log::LevelFilter::Trace)
         .init();
+
     debug!(
         "Using commit {}",
         git_version::git_version!(fallback = "unknown")
     );
-    #[cfg(not(debug_assertions))]
-    env_logger::init();
 
     let library = VulkanLibrary::new().expect("no local Vulkan library/DLL");
     let extension_count = library.extension_properties().len();
@@ -47,7 +45,10 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let renderer = NaiveRenderer::new(ctx, window);
 
-    event_loop.run(move |event, _, control_flow| match event {
+    let mut frame_begin = time::Instant::now();
+    let mut fps_counter = 0;
+    event_loop.run(move |event, _, control_flow| {
+        match event {
         Event::WindowEvent {
             event: WindowEvent::CloseRequested,
             ..
@@ -60,7 +61,14 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         } => {}
         Event::MainEventsCleared => {
             renderer.draw();
+            let now = time::Instant::now();
+            if now - frame_begin > time::Duration::new(1, 0) {
+                frame_begin = now;
+                debug!("FPS: {}", fps_counter);
+                fps_counter = 0;
+            }
+            fps_counter += 1;
         }
         _ => (),
-    });
+    }});
 }
