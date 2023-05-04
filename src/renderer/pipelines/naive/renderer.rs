@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use glm::vec3;
 use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{AutoCommandBufferBuilder, BlitImageInfo, CommandBufferUsage},
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator,
@@ -15,22 +15,20 @@ use vulkano::{
         PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
-    image::{
-        view::ImageView, ImageAccess, ImageDimensions, ImageUsage, StorageImage, SwapchainImage,
-    },
+    image::{view::ImageView, ImageDimensions, ImageUsage, StorageImage, SwapchainImage},
     memory::allocator::{AllocationCreateInfo, MemoryUsage},
     pipeline::{
-        layout::{PipelineLayoutCreateInfo},
-        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        layout::PipelineLayoutCreateInfo, ComputePipeline, Pipeline, PipelineBindPoint,
+        PipelineLayout,
     },
-    shader::{DescriptorBindingRequirements, ShaderStages},
+    shader::{ShaderStages, SpecializationConstants, SpecializationMapEntry},
     swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
     sync::{self, GpuFuture},
 };
 
 use crate::RenderingContext;
 
-use super::{shader, RawSphere, Sphere};
+use super::{shader, Sphere};
 
 pub struct NaiveCamera {
     pub position: glm::Vec3,
@@ -52,7 +50,7 @@ impl Default for NaiveCamera {
 
 pub struct NaiveRenderer {
     pub(crate) ctx: Arc<RenderingContext>,
-    
+
     pub(crate) surface_size: [u32; 2],
     pub(crate) viewport_size: [u32; 2],
     pub(crate) scale_factor: u32,
@@ -78,6 +76,41 @@ pub struct RendererConstants {
     pub(crate) max_depth: f32,
 }
 
+unsafe impl SpecializationConstants for RendererConstants {
+    fn descriptors() -> &'static [SpecializationMapEntry] {
+        static DESCRIPTORS: [SpecializationMapEntry; 5] = [
+            // XXX: SAFETY CHECK THIS PLS TY; VERY UNSAFE
+            SpecializationMapEntry {
+                constant_id: 0,
+                offset: 0,
+                size: 4,
+            },
+            SpecializationMapEntry {
+                constant_id: 1,
+                offset: 4,
+                size: 4,
+            },
+            SpecializationMapEntry {
+                constant_id: 2,
+                offset: 8,
+                size: 4,
+            },
+            SpecializationMapEntry {
+                constant_id: 3,
+                offset: 12,
+                size: 4,
+            },
+            SpecializationMapEntry {
+                constant_id: 4,
+                offset: 16,
+                size: 4,
+            },
+        ];
+
+        &DESCRIPTORS
+    }
+}
+
 impl NaiveRenderer {
     pub fn new(ctx: Arc<RenderingContext>, surface: Arc<Surface>) -> Self {
         let caps = ctx
@@ -87,7 +120,7 @@ impl NaiveRenderer {
 
         // Dimensions of the surface to draw on
         let surface_size = [800, 600];
-        let scale_factor = 1u32;
+        let scale_factor = 4u32;
         let viewport_size = [800 / scale_factor, 600 / scale_factor];
 
         let composite_alpha = caps.supported_composite_alpha.into_iter().next().unwrap();
@@ -128,7 +161,7 @@ impl NaiveRenderer {
             ImageDimensions::Dim2d {
                 width: viewport_size[0],
                 height: viewport_size[1],
-                array_layers: 1, // images can be arrays of layers
+                array_layers: 1,
             },
             vulkano::format::Format::R8G8B8A8_UNORM,
             Some(queue.queue_family_index()),
@@ -154,20 +187,8 @@ impl NaiveRenderer {
         )
         .unwrap();
 
-        let render_constants = Buffer::from_data(
-            &ctx.memory_allocator,
-            BufferCreateInfo {
-                usage: BufferUsage::UNIFORM_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
-                ..Default::default()
-            },
-            consts,
-        ).unwrap();
-
         let descriptor_set_allocator = StandardDescriptorSetAllocator::new(ctx.device.clone());
+
         let descriptor_set_layout = DescriptorSetLayout::new(
             ctx.device.clone(),
             DescriptorSetLayoutCreateInfo {
@@ -206,6 +227,8 @@ impl NaiveRenderer {
         )
         .unwrap();
 
+        let shader = shader(ctx.device.clone());
+
         let pipeline_layout = PipelineLayout::new(
             ctx.device.clone(),
             PipelineLayoutCreateInfo {
@@ -218,8 +241,8 @@ impl NaiveRenderer {
 
         let compute_pipeline = ComputePipeline::with_pipeline_layout(
             ctx.device.clone(),
-            shader(ctx.device.clone()).entry_point("main").unwrap(),
-            &(),
+            shader.entry_point("main").unwrap(),
+            &consts,
             pipeline_layout,
             None,
         )
@@ -232,8 +255,7 @@ impl NaiveRenderer {
             descriptor_set_layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, view),
-                WriteDescriptorSet::buffer(1, render_constants),
-                WriteDescriptorSet::buffer(2, sphere_buffer),
+                WriteDescriptorSet::buffer(1, sphere_buffer),
             ],
         )
         .unwrap();
