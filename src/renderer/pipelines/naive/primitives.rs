@@ -1,4 +1,5 @@
 extern crate nalgebra_glm as glm;
+use glm::{vec3, Vec3};
 use vulkano::buffer::BufferContents;
 
 #[derive(Debug)]
@@ -18,10 +19,17 @@ impl Sphere {
             pos: [self.pos.x, self.pos.y, self.pos.z],
         }
     }
+
+    pub fn bounds(&self) -> (Vec3, Vec3) {
+        (
+            vec3(self.radius, self.radius, self.radius) + self.pos,
+            -vec3(self.radius, self.radius, self.radius) + self.pos,
+        )
+    }
 }
 
 #[repr(C)]
-#[derive(BufferContents)]
+#[derive(Debug, BufferContents)]
 pub struct RawSphere {
     pub pos: [f32; 3],
     pub radius: f32,

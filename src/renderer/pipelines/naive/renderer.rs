@@ -2,9 +2,10 @@ extern crate nalgebra_glm as glm;
 
 use std::sync::Arc;
 
+use crate::naive::constants::RendererConstants;
 use glm::vec3;
 use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
+    buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{AutoCommandBufferBuilder, BlitImageInfo, CommandBufferUsage},
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator,
@@ -21,7 +22,7 @@ use vulkano::{
         layout::PipelineLayoutCreateInfo, ComputePipeline, Pipeline, PipelineBindPoint,
         PipelineLayout,
     },
-    shader::{ShaderStages, SpecializationConstants, SpecializationMapEntry},
+    shader::ShaderStages,
     swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
     sync::{self, GpuFuture},
 };
@@ -29,24 +30,6 @@ use vulkano::{
 use crate::RenderingContext;
 
 use super::{shader, Sphere};
-
-pub struct NaiveCamera {
-    pub position: glm::Vec3,
-    pub rotation: glm::Quat,
-
-    // Radians
-    pub fov: f32,
-}
-
-impl Default for NaiveCamera {
-    fn default() -> Self {
-        Self {
-            position: Default::default(),
-            rotation: Default::default(),
-            fov: 90f32,
-        }
-    }
-}
 
 pub struct NaiveRenderer {
     pub(crate) ctx: Arc<RenderingContext>,
@@ -66,53 +49,9 @@ pub struct NaiveRenderer {
     pub(crate) swapchain_images: Vec<Arc<SwapchainImage>>,
 }
 
-#[derive(BufferContents)]
-#[repr(C)]
-pub struct RendererConstants {
-    pub(crate) aspect_ratio: f32,
-    pub(crate) width: u32,
-    pub(crate) height: u32,
-    pub(crate) min_depth: f32,
-    pub(crate) max_depth: f32,
-}
-
-unsafe impl SpecializationConstants for RendererConstants {
-    fn descriptors() -> &'static [SpecializationMapEntry] {
-        static DESCRIPTORS: [SpecializationMapEntry; 5] = [
-            // XXX: SAFETY CHECK THIS PLS TY; VERY UNSAFE
-            SpecializationMapEntry {
-                constant_id: 0,
-                offset: 0,
-                size: 4,
-            },
-            SpecializationMapEntry {
-                constant_id: 1,
-                offset: 4,
-                size: 4,
-            },
-            SpecializationMapEntry {
-                constant_id: 2,
-                offset: 8,
-                size: 4,
-            },
-            SpecializationMapEntry {
-                constant_id: 3,
-                offset: 12,
-                size: 4,
-            },
-            SpecializationMapEntry {
-                constant_id: 4,
-                offset: 16,
-                size: 4,
-            },
-        ];
-
-        &DESCRIPTORS
-    }
-}
-
 impl NaiveRenderer {
     pub fn new(ctx: Arc<RenderingContext>, surface: Arc<Surface>) -> Self {
+        // Capabilities of the surface of the device
         let caps = ctx
             .physical_device
             .surface_capabilities(&surface, Default::default())
@@ -145,8 +84,10 @@ impl NaiveRenderer {
         )
         .unwrap();
 
+        // Queue to push the commands into
         let queue = ctx.queues.iter().next().unwrap().clone();
 
+        // The constants set up by the renderer
         let consts = RendererConstants {
             aspect_ratio: viewport_size[0] as f32 / viewport_size[1] as f32,
             width: viewport_size[0],
@@ -187,8 +128,10 @@ impl NaiveRenderer {
         )
         .unwrap();
 
+        // Allocator for the descriptors
         let descriptor_set_allocator = StandardDescriptorSetAllocator::new(ctx.device.clone());
 
+        // Layout of the descriptors in the set
         let descriptor_set_layout = DescriptorSetLayout::new(
             ctx.device.clone(),
             DescriptorSetLayoutCreateInfo {
@@ -227,8 +170,10 @@ impl NaiveRenderer {
         )
         .unwrap();
 
+        // Compiled shader to display colour with
         let shader = shader(ctx.device.clone());
 
+        // The set of inputs that a pipeline processes
         let pipeline_layout = PipelineLayout::new(
             ctx.device.clone(),
             PipelineLayoutCreateInfo {
@@ -239,6 +184,7 @@ impl NaiveRenderer {
         )
         .unwrap();
 
+        // The single shader compute pipeline to run the operations inside of
         let compute_pipeline = ComputePipeline::with_pipeline_layout(
             ctx.device.clone(),
             shader.entry_point("main").unwrap(),
@@ -248,8 +194,10 @@ impl NaiveRenderer {
         )
         .expect("failed to create compute pipeline");
 
+        // View of the image for the pipeline to draw on
         let view = ImageView::new_default(out_image.clone()).unwrap();
 
+        // Descriptors to push into the pipeline
         let descriptor_set = PersistentDescriptorSet::new(
             &descriptor_set_allocator,
             descriptor_set_layout.clone(),
