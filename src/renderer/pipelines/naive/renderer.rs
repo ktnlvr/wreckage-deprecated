@@ -52,6 +52,10 @@ impl Default for NaiveCamera {
 
 pub struct NaiveRenderer {
     pub(crate) ctx: Arc<RenderingContext>,
+    
+    pub(crate) surface_size: [u32; 2],
+    pub(crate) viewport_size: [u32; 2],
+    pub(crate) scale_factor: u32,
 
     // Dataflow
     pub(crate) queue: Arc<Queue>,
@@ -68,8 +72,8 @@ pub struct NaiveRenderer {
 #[repr(C)]
 pub struct RendererConstants {
     pub(crate) aspect_ratio: f32,
-    pub(crate) width: f32,
-    pub(crate) height: f32,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
     pub(crate) min_depth: f32,
     pub(crate) max_depth: f32,
 }
@@ -82,7 +86,9 @@ impl NaiveRenderer {
             .expect("failed to get surface capabilities");
 
         // Dimensions of the surface to draw on
-        let dimensions = [800, 600];
+        let surface_size = [800, 600];
+        let scale_factor = 1u32;
+        let viewport_size = [800 / scale_factor, 600 / scale_factor];
 
         let composite_alpha = caps.supported_composite_alpha.into_iter().next().unwrap();
         let image_format = Some(
@@ -98,7 +104,7 @@ impl NaiveRenderer {
             SwapchainCreateInfo {
                 min_image_count: caps.min_image_count + 1, // How many buffers to use in the swapchain
                 image_format,
-                image_extent: dimensions.into(),
+                image_extent: surface_size.into(),
                 image_usage: ImageUsage::TRANSFER_DST, // What the images are going to be used for
                 composite_alpha,
                 ..Default::default()
@@ -109,9 +115,9 @@ impl NaiveRenderer {
         let queue = ctx.queues.iter().next().unwrap().clone();
 
         let consts = RendererConstants {
-            aspect_ratio: 800f32 / 600f32,
-            width: 800f32,
-            height: 600f32,
+            aspect_ratio: viewport_size[0] as f32 / viewport_size[1] as f32,
+            width: viewport_size[0],
+            height: viewport_size[1],
             min_depth: 0f32,
             max_depth: 40f32,
         };
@@ -120,8 +126,8 @@ impl NaiveRenderer {
         let out_image = StorageImage::new(
             &ctx.memory_allocator,
             ImageDimensions::Dim2d {
-                width: dimensions[0],
-                height: dimensions[1],
+                width: viewport_size[0],
+                height: viewport_size[1],
                 array_layers: 1, // images can be arrays of layers
             },
             vulkano::format::Format::R8G8B8A8_UNORM,
@@ -234,6 +240,9 @@ impl NaiveRenderer {
 
         Self {
             ctx,
+            scale_factor,
+            viewport_size,
+            surface_size,
             swapchain,
             swapchain_images: images,
             out_image,
@@ -255,8 +264,6 @@ impl NaiveRenderer {
             swapchain::acquire_next_image(self.swapchain.clone(), None).unwrap();
         let image = self.swapchain_images.get(image_i as usize).unwrap();
 
-        let camera = NaiveCamera::default();
-
         builder
             .bind_pipeline_compute(self.pipeline.clone())
             .bind_descriptor_sets(
@@ -265,7 +272,7 @@ impl NaiveRenderer {
                 0u32,
                 self.descriptors.clone(),
             )
-            .dispatch([800, 600, 2])
+            .dispatch([self.viewport_size[0], self.viewport_size[1], 2])
             .unwrap()
             .blit_image(BlitImageInfo::images(self.out_image.clone(), image.clone()))
             .unwrap();

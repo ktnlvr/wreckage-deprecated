@@ -8,13 +8,15 @@ struct Sphere {
 };
 
 layout(binding = 0, rgba8) uniform writeonly image2D img;
+
 layout(binding = 1) uniform RenderingSettings {
     float aspect_ratio;
-    float width;
-    float height;
+    uint width;
+    uint height;
     float min_depth;
     float max_depth;
 } push_constants;
+
 layout(binding = 2) uniform Objects {
     Sphere spheres[2];
 } spheres;
