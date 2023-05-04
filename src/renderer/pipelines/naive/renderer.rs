@@ -93,7 +93,7 @@ impl NaiveRenderer {
             width: viewport_size[0],
             height: viewport_size[1],
             min_depth: 0f32,
-            max_depth: 40f32,
+            max_depth: 1f32,
         };
 
         // The buffer to draw onto

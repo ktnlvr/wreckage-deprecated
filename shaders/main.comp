@@ -123,5 +123,5 @@ void main() {
     ray.direction = lower_left + uv.x * horizontal + uv.y * vertical - origin;
 
     HitData hit = raycast(ray, uv);
-    imageStore(img, pixel, vec4(hit.colour, 1));
+    imageStore(img, pixel, vec4(hit.colour, hit.hit ? 1 - (hit.distance - min_depth) / max_depth : 0));
 }

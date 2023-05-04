@@ -1,8 +1,6 @@
 mod renderer;
 use std::{error::Error, time};
 
-use pipelines::naive::*;
-
 pub use renderer::prelude::*;
 
 use log::{debug, info};
