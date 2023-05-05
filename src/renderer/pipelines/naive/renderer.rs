@@ -3,7 +3,7 @@ extern crate nalgebra_glm as glm;
 use std::sync::Arc;
 
 use crate::naive::constants::RendererConstants;
-use glm::vec3;
+use glm::{vec3, Vec3, Mat4};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{AutoCommandBufferBuilder, BlitImageInfo, CommandBufferUsage},
@@ -19,8 +19,8 @@ use vulkano::{
     image::{view::ImageView, ImageDimensions, ImageUsage, StorageImage, SwapchainImage},
     memory::allocator::{AllocationCreateInfo, MemoryUsage},
     pipeline::{
-        layout::PipelineLayoutCreateInfo, ComputePipeline, Pipeline, PipelineBindPoint,
-        PipelineLayout,
+        layout::{PipelineLayoutCreateInfo, PushConstantRange},
+        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
     },
     shader::ShaderStages,
     swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
@@ -47,6 +47,10 @@ pub struct NaiveRenderer {
     // Presentation
     pub(crate) swapchain: Arc<Swapchain>,
     pub(crate) swapchain_images: Vec<Arc<SwapchainImage>>,
+
+    // Controls
+    pub(crate) position: Vec3,
+    pub(crate) rotation: Mat4,
 }
 
 impl NaiveRenderer {
@@ -59,7 +63,7 @@ impl NaiveRenderer {
 
         // Dimensions of the surface to draw on
         let surface_size = [800, 600];
-        let scale_factor = 4u32;
+        let scale_factor = 1u32;
         let viewport_size = [800 / scale_factor, 600 / scale_factor];
 
         let composite_alpha = caps.supported_composite_alpha.into_iter().next().unwrap();
@@ -173,12 +177,19 @@ impl NaiveRenderer {
         // Compiled shader to display colour with
         let shader = shader(ctx.device.clone());
 
+        // Push constants
+        let push_constants = vec![PushConstantRange {
+            stages: ShaderStages::COMPUTE,
+            offset: 0,
+            size: std::mem::size_of::<Vec3>() as u32,
+        }];
+
         // The set of inputs that a pipeline processes
         let pipeline_layout = PipelineLayout::new(
             ctx.device.clone(),
             PipelineLayoutCreateInfo {
                 set_layouts: vec![descriptor_set_layout.clone()],
-                push_constant_ranges: vec![],
+                push_constant_ranges: push_constants,
                 ..Default::default()
             },
         )
@@ -209,6 +220,8 @@ impl NaiveRenderer {
         .unwrap();
 
         Self {
+            position: Vec3::identity(),
+            rotation: Mat4::identity(),
             ctx,
             scale_factor,
             viewport_size,
@@ -242,6 +255,7 @@ impl NaiveRenderer {
                 0u32,
                 self.descriptors.clone(),
             )
+            .push_constants(self.pipeline.layout().clone(), 0, self.position)
             .dispatch([self.viewport_size[0], self.viewport_size[1], 1])
             .unwrap()
             .blit_image(BlitImageInfo::images(self.out_image.clone(), image.clone()))

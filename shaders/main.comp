@@ -19,6 +19,10 @@ layout(binding = 1) uniform Objects {
     Sphere spheres[2];
 } spheres;
 
+layout(push_constant) uniform PushConstants {
+    vec3 position;
+} push_constants;
+
 struct Ray {
     vec3 origin;
     vec3 direction;
@@ -107,7 +111,7 @@ HitData raycast(Ray ray, vec2 uv) {
 void main() {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
 
-    vec3 origin = vec3(0, 0, 0);
+    vec3 origin = -push_constants.position;
     float aspect_ratio = aspect_ratio;
 
     float viewport_height = 3.0;
@@ -115,7 +119,7 @@ void main() {
 
     vec3 horizontal = vec3(viewport_height, 0, 0);
     vec3 vertical = vec3(0, viewport_width, 0);
-    int focal_length = 1;
+    float focal_length = viewport_width / (4 * tan(radians(45) / 2));
     vec3 lower_left = origin - 0.5 * horizontal - 0.5 * vertical - vec3(0, 0, focal_length);
 
     vec2 uv = vec2(1, 1) - vec2(
