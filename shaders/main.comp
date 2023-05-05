@@ -94,6 +94,10 @@ HitData raycast(Ray ray, vec2 uv) {
     uint i = gl_GlobalInvocationID.z;
     HitData data = trace_sphere(ray, spheres.spheres[i].position, spheres.spheres[i].radius);
     if (!data.hit) {
+        data = trace_sphere(ray, spheres.spheres[1].position, spheres.spheres[1].radius);
+        if (data.hit) {
+            return data;
+        }
         return handle_miss(ray);
     } else {
         return data;
@@ -123,5 +127,9 @@ void main() {
     ray.direction = lower_left + uv.x * horizontal + uv.y * vertical - origin;
 
     HitData hit = raycast(ray, uv);
-    imageStore(img, pixel, vec4(hit.colour, hit.hit ? 1 - (hit.distance - min_depth) / max_depth : 0));
+    imageStore(
+        img, 
+        pixel, 
+        vec4(hit.colour,
+            (hit.hit ? 1 - (hit.distance - min_depth) / max_depth : 0)));
 }

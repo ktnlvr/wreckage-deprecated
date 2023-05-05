@@ -93,7 +93,7 @@ impl NaiveRenderer {
             width: viewport_size[0],
             height: viewport_size[1],
             min_depth: 0f32,
-            max_depth: 1f32,
+            max_depth: 12f32,
         };
 
         // The buffer to draw onto
@@ -242,7 +242,7 @@ impl NaiveRenderer {
                 0u32,
                 self.descriptors.clone(),
             )
-            .dispatch([self.viewport_size[0], self.viewport_size[1], 2])
+            .dispatch([self.viewport_size[0], self.viewport_size[1], 1])
             .unwrap()
             .blit_image(BlitImageInfo::images(self.out_image.clone(), image.clone()))
             .unwrap();
