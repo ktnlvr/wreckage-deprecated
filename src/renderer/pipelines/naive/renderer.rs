@@ -2,8 +2,8 @@ extern crate nalgebra_glm as glm;
 
 use std::sync::Arc;
 
-use crate::naive::constants::RendererConstants;
-use glm::{vec3, Vec3, Mat4};
+use crate::{naive::constants::RendererConstants, Camera, RawCamera};
+use glm::{vec3, Vec3};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{AutoCommandBufferBuilder, BlitImageInfo, CommandBufferUsage},
@@ -50,7 +50,7 @@ pub struct NaiveRenderer {
 
     // Controls
     pub(crate) position: Vec3,
-    pub(crate) rotation: Mat4,
+    pub(crate) rotation: Vec3,
 }
 
 impl NaiveRenderer {
@@ -180,8 +180,8 @@ impl NaiveRenderer {
         // Push constants
         let push_constants = vec![PushConstantRange {
             stages: ShaderStages::COMPUTE,
-            offset: 0,
-            size: std::mem::size_of::<Vec3>() as u32,
+            size: std::mem::size_of::<RawCamera>() as u32,
+            ..Default::default()
         }];
 
         // The set of inputs that a pipeline processes
@@ -221,7 +221,7 @@ impl NaiveRenderer {
 
         Self {
             position: Vec3::identity(),
-            rotation: Mat4::identity(),
+            rotation: Vec3::identity(),
             ctx,
             scale_factor,
             viewport_size,
@@ -255,7 +255,15 @@ impl NaiveRenderer {
                 0u32,
                 self.descriptors.clone(),
             )
-            .push_constants(self.pipeline.layout().clone(), 0, self.position)
+            .push_constants(
+                self.pipeline.layout().clone(),
+                0,
+                Camera {
+                    position: self.position,
+                    rotation: self.rotation,
+                }
+                .raw(),
+            )
             .dispatch([self.viewport_size[0], self.viewport_size[1], 1])
             .unwrap()
             .blit_image(BlitImageInfo::images(self.out_image.clone(), image.clone()))

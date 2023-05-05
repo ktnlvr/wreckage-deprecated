@@ -1,16 +1,16 @@
 mod renderer;
-use std::{error::Error, time};
+use std::{error::Error, sync::Arc, time};
 
 use nalgebra_glm::{euler, vec3, Mat4, Quat};
 pub use renderer::prelude::*;
 
 use log::{debug, info};
 use vulkano::{device::DeviceExtensions, VulkanLibrary};
-use vulkano_win::VkSurfaceBuild;
+use vulkano_win::{create_surface_from_winit, VkSurfaceBuild};
 use winit::{
     event::{DeviceEvent, ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
+    window::{WindowBuilder, CursorGrabMode}, dpi::LogicalPosition,
 };
 
 use crate::renderer::prelude::renderer::RenderingContext;
@@ -45,11 +45,15 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let ctx = RenderingContext::new(library, instance_ext, device_ext)?;
 
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new()
-        .with_resizable(false)
-        .build_vk_surface(&event_loop, ctx.instance.clone())?;
+    let window = Arc::new(
+        WindowBuilder::new()
+            .with_resizable(false)
+            .build(&event_loop)?,
+    );
 
-    let mut renderer = NaiveRenderer::new(ctx, window);
+    let surface = create_surface_from_winit(window, ctx.instance.clone())?;
+
+    let mut renderer = NaiveRenderer::new(ctx, surface);
 
     let mut frame_begin = time::Instant::now();
     let mut fps_counter = 0;
@@ -128,7 +132,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             if right_pressed {
                 renderer.position += vec3(dt * speed, 0.0, 0.0);
             }
-            renderer.rotation = Mat4::from_euler_angles(0.0, pitch, yaw);
+            renderer.rotation = vec3(-pitch, yaw, 0f32);
 
             renderer.draw();
             fps_counter += 1;

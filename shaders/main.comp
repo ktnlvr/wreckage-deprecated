@@ -21,6 +21,7 @@ layout(binding = 1) uniform Objects {
 
 layout(push_constant) uniform PushConstants {
     vec3 position;
+    mat4 rotation_matrix;
 } push_constants;
 
 struct Ray {
@@ -129,6 +130,7 @@ void main() {
     Ray ray;
     ray.origin = origin;
     ray.direction = lower_left + uv.x * horizontal + uv.y * vertical - origin;
+    ray.direction = vec3(push_constants.rotation_matrix * vec4(ray.direction, 0.0));
 
     HitData hit = raycast(ray, uv);
     imageStore(
