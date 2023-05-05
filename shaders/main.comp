@@ -115,7 +115,7 @@ void main() {
     vec3 origin = -push_constants.position;
     float aspect_ratio = aspect_ratio;
 
-    float viewport_height = 3.0;
+    float viewport_height = 4.0;
     float viewport_width =  viewport_height / aspect_ratio;
 
     vec3 horizontal = vec3(viewport_height, 0, 0);

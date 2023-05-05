@@ -1,16 +1,16 @@
 mod renderer;
 use std::{error::Error, sync::Arc, time};
 
-use nalgebra_glm::{euler, vec3, Mat4, Quat};
+use nalgebra_glm::{rotate_vec3, vec3, Vec3};
 pub use renderer::prelude::*;
 
 use log::{debug, info};
 use vulkano::{device::DeviceExtensions, VulkanLibrary};
-use vulkano_win::{create_surface_from_winit, VkSurfaceBuild};
+use vulkano_win::create_surface_from_winit;
 use winit::{
     event::{DeviceEvent, ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::{WindowBuilder, CursorGrabMode}, dpi::LogicalPosition,
+    window::WindowBuilder,
 };
 
 use crate::renderer::prelude::renderer::RenderingContext;
@@ -51,6 +51,11 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             .build(&event_loop)?,
     );
 
+    window.set_cursor_visible(false);
+    window
+        .set_cursor_grab(winit::window::CursorGrabMode::Locked)
+        .unwrap_or_else(|_| {});
+
     let surface = create_surface_from_winit(window, ctx.instance.clone())?;
 
     let mut renderer = NaiveRenderer::new(ctx, surface);
@@ -60,7 +65,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let mut last_frame_time = time::Instant::now();
     let mut dt = 0f32;
-    let speed = 1f32;
+    let speed = 4f32;
 
     let mut forward_pressed = false;
     let mut backward_pressed = false;
@@ -69,7 +74,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let mut yaw = 0f32;
     let mut pitch = 0f32;
-    let look_speed = 0.4;
+    let look_speed = 0.6;
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
@@ -120,19 +125,31 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             dt = (now - last_frame_time).as_secs_f32();
             last_frame_time = now;
 
+            let mut velocity: Vec3 = vec3(0f32, 0f32, 0f32);
+
             if forward_pressed {
-                renderer.position += vec3(0.0, 0.0, dt * speed);
+                velocity += vec3(0.0, 0.0, speed);
             }
             if backward_pressed {
-                renderer.position += vec3(0.0, 0.0, -dt * speed);
+                velocity += vec3(0.0, 0.0, -speed);
             }
             if left_pressed {
-                renderer.position += vec3(-dt * speed, 0.0, 0.0);
+                velocity += vec3(-speed, 0.0, 0.0);
             }
             if right_pressed {
-                renderer.position += vec3(dt * speed, 0.0, 0.0);
+                velocity += vec3(speed, 0.0, 0.0);
             }
+
             renderer.rotation = vec3(-pitch, yaw, 0f32);
+            renderer.position += &(if velocity.magnitude_squared() != 0f32 {
+                rotate_vec3(
+                    &(velocity / velocity.magnitude()),
+                    yaw,
+                    &vec3(0f32, 1f32, 0f32),
+                )
+            } else {
+                vec3(0f32, 0f32, 0f32)
+            } * dt);
 
             renderer.draw();
             fps_counter += 1;
