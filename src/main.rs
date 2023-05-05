@@ -4,7 +4,7 @@ use std::{error::Error, sync::Arc, time};
 use nalgebra_glm::{rotate_vec3, vec3, Vec3};
 pub use renderer::prelude::*;
 
-use log::{debug, info};
+use log::{debug, info, warn};
 use vulkano::{device::DeviceExtensions, VulkanLibrary};
 use vulkano_win::create_surface_from_winit;
 use winit::{
@@ -54,7 +54,12 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     window.set_cursor_visible(false);
     window
         .set_cursor_grab(winit::window::CursorGrabMode::Locked)
-        .unwrap_or_else(|_| {});
+        .unwrap_or_else(|_| {
+            warn!("Failed to lock the cursor, trying to confine");
+            window
+                .set_cursor_grab(winit::window::CursorGrabMode::Confined)
+                .unwrap_or_else(|_| warn!("Couldn't confine. Failed to grab cursor."));
+        });
 
     let surface = create_surface_from_winit(window, ctx.instance.clone())?;
 
