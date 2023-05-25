@@ -63,7 +63,7 @@ impl NaiveRenderer {
 
         // Dimensions of the surface to draw on
         let surface_size = [800, 600];
-        let scale_factor = 1u32;
+        let scale_factor = 4u32;
         let viewport_size = [800 / scale_factor, 600 / scale_factor];
 
         let composite_alpha = caps.supported_composite_alpha.into_iter().next().unwrap();
@@ -113,6 +113,18 @@ impl NaiveRenderer {
         )
         .unwrap();
 
+        let mut spheres = vec![];
+        for x in 0..16 {
+            for y in 0..16 {
+                for z in 0..16 {
+                    spheres.push(Sphere::new(
+                        vec3(x as f32, y as f32, z as f32),
+                        ((x * y + z) % 5 + 1) as f32 / 20.0,
+                    ));
+                }
+            }
+        }
+
         // The buffer to store spheres in
         let sphere_buffer = Buffer::from_iter(
             &ctx.memory_allocator,
@@ -124,10 +136,7 @@ impl NaiveRenderer {
                 usage: MemoryUsage::Upload,
                 ..Default::default()
             },
-            [
-                Sphere::new(vec3(1.0, 0.0, -1.0), 0.2),
-                Sphere::new(vec3(0.0, 0.0, -1.0), 0.5),
-            ]
+            spheres.into_iter()
             .map(Sphere::raw),
         )
         .unwrap();

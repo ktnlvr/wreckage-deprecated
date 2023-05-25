@@ -70,7 +70,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let mut last_frame_time = time::Instant::now();
     let mut dt = 0f32;
-    let speed = 4f32;
+    let speed = 10f32;
 
     let mut forward_pressed = false;
     let mut backward_pressed = false;

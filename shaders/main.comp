@@ -1,5 +1,7 @@
 #version 460
 
+#define OBJECT_COUNT (16*16*16)
+
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 1) in;
 
 struct Sphere {
@@ -16,7 +18,7 @@ layout(constant_id = 4) const float max_depth = 40;
 layout(binding = 0, rgba8) uniform writeonly image2D img;
 
 layout(binding = 1) uniform Objects {
-    Sphere spheres[2];
+    Sphere spheres[OBJECT_COUNT];
 } spheres;
 
 layout(push_constant) uniform PushConstants {
@@ -100,16 +102,15 @@ HitData raycast(Ray ray, vec2 uv) {
 
     HitData active_hit;
     active_hit.hit = false;
-    for (i; !active_hit.hit && i < 2; i++) {
+    for (i; !active_hit.hit && i < OBJECT_COUNT; i++) {
         active_hit = trace_sphere(ray, spheres.spheres[i].position, spheres.spheres[i].radius);
     }
 
-    for (i; i < 2; i++) {
+    for (i; i < OBJECT_COUNT; i++) {
         HitData new_hit = trace_sphere(ray, spheres.spheres[i].position, spheres.spheres[i].radius);
         if (new_hit.hit) {
             if (new_hit.distance < active_hit.distance)
                 active_hit = new_hit;
-            return active_hit;
         }
     }
 
