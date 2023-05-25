@@ -96,16 +96,27 @@ HitData handle_miss(Ray ray) {
 }
 
 HitData raycast(Ray ray, vec2 uv) {
-    uint i = gl_GlobalInvocationID.z;
-    HitData data = trace_sphere(ray, spheres.spheres[i].position, spheres.spheres[i].radius);
-    if (!data.hit) {
-        data = trace_sphere(ray, spheres.spheres[1].position, spheres.spheres[1].radius);
-        if (data.hit) {
-            return data;
+    uint i = 0;
+
+    HitData active_hit;
+    active_hit.hit = false;
+    for (i; !active_hit.hit && i < 2; i++) {
+        active_hit = trace_sphere(ray, spheres.spheres[i].position, spheres.spheres[i].radius);
+    }
+
+    for (i; i < 2; i++) {
+        HitData new_hit = trace_sphere(ray, spheres.spheres[i].position, spheres.spheres[i].radius);
+        if (new_hit.hit) {
+            if (new_hit.distance < active_hit.distance)
+                active_hit = new_hit;
+            return active_hit;
         }
+    }
+
+    if (!active_hit.hit) {
         return handle_miss(ray);
     } else {
-        return data;
+        return active_hit;
     }
 }
 
